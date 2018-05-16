@@ -1,5 +1,6 @@
 import csv
 import time
+import json
 import logging
 import warnings
 import contextlib
@@ -59,6 +60,27 @@ def read_csv_col(csv_path, col=0, dtype=np.uint64):
     if csv_has_header:
         header = 0
     return pd.read_csv(csv_path, header=header, usecols=[col], names=['foo'], dtype=np.uint64)['foo']
+
+
+class NumpyConvertingEncoder(json.JSONEncoder):
+    """
+    Encoder that converts numpy arrays and scalars
+    into their pure-python counterparts.
+    
+    (No attempt is made to preserve bit-width information.)
+    
+    Usage:
+    
+        >>> d = {"a": np.arange(3, dtype=np.uint32)}
+        >>> json.dumps(d, cls=NumpyConvertingEncoder)
+        '{"a": [0, 1, 2]}'
+    """
+    def default(self, o):
+        if isinstance(o, (np.ndarray, np.number)):
+            return o.tolist()
+        return super().default(o)
+
+
 
 _graph_tool_available = None
 def graph_tool_available():

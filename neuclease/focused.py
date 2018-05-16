@@ -1,5 +1,6 @@
 # builtin
 import sys
+import json
 import argparse
 import logging
 from collections import namedtuple
@@ -12,7 +13,7 @@ import pandas as pd
 from dvidutils import LabelMapper
 
 # local
-from .util import Timer, read_csv_col
+from .util import Timer, read_csv_col, NumpyConvertingEncoder
 from .merge_table import load_mapping
 from .merge_graph import LabelmapMergeGraph
 
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--split-mapping', required=False)
+    parser.add_argument('--max-depth', type=int, default=10)
+    parser.add_argument('--stop-after', required=False)
+    #parser.add_argument('--subset-bodies', required=False)
+    parser.add_argument('--output-path', '-o', required=True)
     parser.add_argument('dvid_server')
     parser.add_argument('dvid_uuid')
     parser.add_argument('dvid_instance')
@@ -32,15 +37,22 @@ def main():
     instance_info = DvidInstanceInfo(args.dvid_server, args.dvid_uuid, args.dvid_instance)
 
     # Note: speculative merge table must include original merge graph, at least for 'unimportant' bodies.
-    XXX = compute_focused_paths( args.speculative_merge_table,
-                                 args.original_mapping,
-                                 args.important_bodies,
-                                 instance_info,
-                                 args.split_mapping )
+    all_paths = compute_focused_paths( args.speculative_merge_table,
+                                       args.original_mapping,
+                                       args.important_bodies,
+                                       instance_info,
+                                       args.split_mapping,
+                                       args.max_depth,
+                                       args.stop_after )
+    
+    with open(args.output_path) as f:
+        json.dump(f, all_paths, cls=NumpyConvertingEncoder)
+    
     logger.info("DONE.")
 
+
 DvidInstanceInfo = namedtuple("DvidInstanceInfo", "server uuid instance")
-def compute_focused_paths(instance_info, original_mapping, important_bodies, speculative_merge_tables, split_mapping=None):
+def compute_focused_paths(instance_info, original_mapping, important_bodies, speculative_merge_tables, split_mapping=None, max_depth=10):
     instance_info = DvidInstanceInfo(instance_info)
     with Timer("Loading speculative merge graph", logger):
         merge_graph = LabelmapMergeGraph(speculative_merge_tables, instance_info.uuid)   
@@ -76,7 +88,7 @@ def compute_focused_paths(instance_info, original_mapping, important_bodies, spe
 
     with Timer("Discarding merged edges within 'important' bodies ", logger):
         size_before = len(merge_table_df)
-        merge_table_df.query('body_a != body_b and not (important_a and important_b)', inplace=True)
+        merge_table_df.query('(body_a != body_b) and not (important_a and important_b)', inplace=True)
         size_after = len(merge_table_df)
         logger.info(f"Discarded {size_before - size_after} edges")
 
@@ -85,7 +97,7 @@ def compute_focused_paths(instance_info, original_mapping, important_bodies, spe
     assert edges.dtype == np.uint64
 
     # FIXME: Need to augment original_mapping with rows for single-sv bodies that are 'important'
-    all_paths = find_all_paths(edges, original_mapping, important_bodies)
+    all_paths = find_all_paths(edges, original_mapping, important_bodies, max_depth)
     return all_paths
 
 
@@ -119,7 +131,7 @@ def find_all_paths(edges, original_mapping, important_bodies, max_depth=10):
         all_paths[sv] = sv_paths
 
     return all_paths
-        
+
 
 def find_paths_from(max_depth, important_verts, g, v, v_paths, current_path, current_depth):
     if current_depth > max_depth:
@@ -129,13 +141,17 @@ def find_paths_from(max_depth, important_verts, g, v, v_paths, current_path, cur
     for t in targets:
         if t in current_path:
             continue
+
         current_path.append(t)
         if t in important_verts:
+            # Endpoint found.  Path is complete.
             v_paths.append(list(current_path))
         else:
+            # Keep going
             find_paths_from(max_depth, important_verts, g, t, v_paths, current_path, current_depth+1)
         current_path.pop()
-        
+
+
 if __name__ == "__main__":
     handler = logging.StreamHandler(sys.stdout)
     logger.addHandler(handler)
