@@ -3,9 +3,15 @@ import pytest
 import numpy as np
 import pandas as pd
 
-import graph_tool as gt
-
 from neuclease.focused import find_paths_from, find_all_paths
+from neuclease.util import graph_tool_available
+
+pytestmark = pytest.mark.skipif(not graph_tool_available(),
+                                reason='graph-tool not available')
+
+if graph_tool_available():
+    import graph_tool as gt
+
 
 def assert_path_lists_equal(l1, l2):
     # Convert to sets-of-tuples for easy comparison
