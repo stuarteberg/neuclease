@@ -129,12 +129,22 @@ def find_all_paths(edges, original_mapping, important_bodies, max_depth=10, stop
     sv_to_v = pd.Series(index=v_to_sv, data=np.arange(len(v_to_sv), dtype=np.uint32))
 
     with Timer("Mapping SV importances"):
-        sv_importances = pd.DataFrame(original_mapping)
-        sv_importances['v'] = sv_to_v.loc[original_mapping.index]
-        sv_importances['important'] = original_mapping.index.isin(important_bodies)
+        # Select the rows of the mapping that are actually mentioned in the merge graph.
+        mapping_subset = original_mapping.loc[v_to_sv]
         
-        important_svs = sv_importances[sv_importances['important']].index
-        important_verts = pd.Index(sv_importances[sv_importances['important']]['v'])
+        sv_importances = pd.DataFrame({'body': mapping_subset})
+        sv_importances['v'] = sv_to_v.loc[mapping_subset.index]
+        sv_importances['important'] = mapping_subset.isin(important_bodies)
+
+        # Drop unimportant
+        sv_importances = sv_importances[sv_importances['important']]
+        
+        important_svs = sv_importances.index
+        important_verts = pd.Index(sv_importances['v'])
+
+        # Remove svs that aren't mentioned in the merge graph
+        important_svs = important_svs.intersection(sv_to_v.index)
+        important_verts = important_verts.intersection(sv_to_v)
 
     if stop_after_endpoint_num is None:
         stop_after_endpoint_num = len(important_svs)

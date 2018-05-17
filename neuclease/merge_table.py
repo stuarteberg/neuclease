@@ -331,8 +331,7 @@ def compute_body_sizes(sv_sizes, mapping):
 
     logger.info("Aggregating sizes by body")
     body_sizes = df.groupby('body').sum()['voxel_count']
-    body_sizes.sort_values(inplace=True, ascending=False)
-    return body_sizes
+    return body_sizes.sort_values(ascending=False)
 
 
 
